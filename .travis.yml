@@ -1,0 +1,20 @@
+language: scala
+scala:
+- 2.10.6
+jdk:
+- oraclejdk7
+cache:
+  directories:
+  - "$HOME/.sbt"
+  - "$HOME/.ivy2"
+deploy:
+  provider: script
+  script: "./travis-deploy.sh"
+  skip_cleanup: true
+  on:
+    tags: true
+    all_branches: true
+env:
+  global:
+  - secure: ykMLrPrW5sYJBCa/n/FfIbEpJmSyo1i1Y54iiva9IRNBWv0qyA8IEQcRQoNd0cQUHy494F1Bkz2ovQh7lvRmSfVOYVFwk0WwIHK3XeygHajfalyzAlw8G86X/KzdVK69PWAG+VhDwLd33yAcWB0ooRx6iv6fHMyaqVbHrCBD0QzOMEdt+EUbXKaKTITsWUn3AJyNRgBweOP8l/6SfrgR52FRHCIAxjD79HcFIIX4dnTRhYMYHeRvlMjZDOJFk6kIDFLlD5MarxprkjjsN/rZmL6hB/wCB7hr3+G8TpT1eFPWLfyD3qPmhco42HiM2Sh/+FJk9ieg5H97yy8GptJ/wyUSr/JDmXCU/07jw6h7i2pOC3PBQW/YNefb11bgQVGmDQwOnO6OxKZzsXWjmgMim2MZW847HjVWWXVUwNvFxy7IhVoo2sSWQa41eqzFW4IYz4YKe/MGm8DLIkcg6c7YIHCLWqcNckTD8K8Ui0f8tN/+4afGyFdbonqldhJhapL4/UEOGeHrzUv4NT3koInylbOkjfO/y6Q0yV7kVm0zsMTnXQydsp4W7dcwW4on7oYAyD/4/J73OVWE64Xla7bOrnTubSDVpBY/53n1UzHfQ7YQAZAk0yVK63kmnaMOeVGObV09mPIF8Qx4ngyMeE2gOfg0ZT3A2lf+yKDN7pGuLFM=
+  - secure: OstyOjXRjtTqBhbEN3uObIU5JBNw9PxeFqxxc/9Vm6BitN9W7T8yjLit0r73jpoOMWK0bZuwFebx3j+xEWUgwcGRfI9dk2EFfL6P+vzRCHyKyV9TMzkMEYdqz/v0MOxbJ3DR69NXZhFeqmln3bVgJgCUflH3kjdPQCC8pds89fSmTLbYrg8kMF4HinoKAiIKPjpL4zJGIvukpVBmScqNpPSt5bzoEBJ+1gY5rsTz1Arn/DzkfkPvW6dnk52MYZIc1inbgn4d4cb7Q+nRgEmPOWXcLLLg3c2YN14wI825oYN7YQoFbBaq2fBEu/H//FHFcCvbk1AT+LrpIc9AZWOv6A0Q3EL+nQYvWsGEnrcBI7bMgjgS/7rtsB9w6m6bsq8gfslgv1Aif1AJUi0lfV07ZcDACFyHe+Ho6rUVic2S8trtNvlQNzSoGFf7HcXueVGsv9095fZWtIdeieC6veuL86a41ksYKjNal7bHh+YI8V9oRBztHy6K8Trg+rMTJgXAoo9woaOza84M5nFidZ+Y1OniAofVxtukyKQJ8+ksl8aGiaozKycQfRN2Z6OHTpPIEkLLIrLv7NKBX5YUCbzAApdnyaYjeOvNyEwKn8tuubcQH3x20htY+Cl9Q3bDVC1aTwoKHTGSeNclYQ9R7dBFxoM427hGkRKd+d1ghMkfI5g=
