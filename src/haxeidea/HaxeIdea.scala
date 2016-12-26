@@ -19,48 +19,64 @@ object HaxeIdea {
   val haxeIdeaManagedLibSubDirs = taskKey[Seq[File]]("All subdirectories in `haxeManagedLibSourceDir`. Internal task.")
   val haxeIdeaManagedSubDir = settingKey[String]("Subdirectory of Idea haxe module to unpack haxe libraries source. Example: 'managed'.")
   val haxeDependsOnIdeaModuleNames = settingKey[Seq[String]]("List of idea haxe module dependencies. Consists of idea module names.")
+  val haxeDependsOnIdeaSourceDirs = settingKey[Seq[File]]("List of dependency idea haxe module source dirs. Internal usage when useRef flag is set.")
 
-  val copyHaxeDeps = taskKey[Seq[File]]("Unpack and copy dependent haxe libraries to `haxeManagedLibSourceDir`.")
+  val copyHaxeDepsFiles = taskKey[Seq[File]]("Unpack and copy dependent haxe libraries to `haxeManagedLibSourceDir`. Returns all copied files")
+  val copyHaxeDepsInternal = taskKey[(Seq[File], Set[File])]("Unpack and copy dependent haxe libraries to `haxeManagedLibSourceDir`. Internal usage. Returns (directories, all_files)")
 
   val haxeIdeaUpdate = taskKey[Unit]("Update .iml haxe module file")
 
   // ------------------------------- RelativeHaxeProject -------------------------------
 
-  case class RelativeHaxeProject(name: String, moduleId: ModuleID, ideaModuleName: String, useRef: Boolean = false) {
+  var relativeHaxeProjectFile: (String) => File = {projectName =>
+    file(System.getProperty("user.home") + "/ws/" + projectName)
+  }
+
+  case class RelativeHaxeProject(name: String, moduleId: ModuleID, ideaModuleName: String, projectId: String = null, useRef: Boolean = false) {
     if (useRef) println("Using haxe project reference for " + name)
 
+    def projectFile: File = relativeHaxeProjectFile(name)
+
+    val project: ProjectReference =
+      if (projectId == null) RootProject(projectFile)
+      else ProjectRef(projectFile, projectId)
+
     def dependsFor(proj: Project): Project =
-      if (useRef) proj.settings(haxeDependsOnIdeaModuleNames += ideaModuleName)
+      if (useRef) proj.settings(
+        haxeDependsOnIdeaModuleNames += ideaModuleName,
+        haxeDependsOnIdeaSourceDirs ++= (sourceDirectories in Compile in project).value
+      )
       else proj.settings(libraryDependencies += moduleId)
   }
-  implicit class _ProjectWrapper2(proj: Project) {
-    def dependsOn2(relativeProject: RelativeHaxeProject): Project = relativeProject.dependsFor(proj)
+  implicit class _ProjectWrapper(proj: Project) {
+    def dependsOn(relativeProject: RelativeHaxeProject): Project = relativeProject.dependsFor(proj)
   }
 
   // ------------------------------- Tasks -------------------------------
 
   lazy val haxeIdeaCpTask = haxeIdeaCp := {
-    haxeIdeaSourceSubDirs.value.map(haxeIdeaModuleDir.value / _) ++ haxeIdeaManagedLibSubDirs.value
+    haxeIdeaSourceSubDirs.value.map(haxeIdeaModuleDir.value / _) ++
+      haxeIdeaManagedLibSubDirs.value ++
+      haxeDependsOnIdeaSourceDirs.value
   }
 
-  lazy val haxeManagedLibSubDirsTask = haxeIdeaManagedLibSubDirs := {
-    val managedSourceDir: File = haxeIdeaModuleDir.value / haxeIdeaManagedSubDir.value
-    managedSourceDir.listFiles().filter(_.isDirectory)
-  }
+  lazy val haxeManagedLibSubDirsTask = haxeIdeaManagedLibSubDirs := copyHaxeDepsInternal.value._1
 
   /**
     * Unpack and copy dependent haxe libraries to [[haxeIdeaManagedSubDir]]
     */
-  lazy val copyHaxeDepsTask = copyHaxeDeps := {
+  lazy val copyHaxeDepsInternalTask = copyHaxeDepsInternal := {
     val managedSourceDir: File = haxeIdeaModuleDir.value / haxeIdeaManagedSubDir.value
 
     val classPath = (dependencyClasspath in Compile).value
     var unpackedFiles: Set[File] = Set.empty
+    var unpackedDirs = new ArrayBuffer[File]()
     for {attrFile <- classPath
          artifact <- attrFile.metadata.get(artifact.key) if artifact.classifier.exists(_ == "haxe")} {
       val moduleId: ModuleID = attrFile.metadata.get(moduleID.key).get
       println("Unpacking haxe sources from module " + moduleId)
       val unpackDir = new File(managedSourceDir, moduleId.organization + "@" + moduleId.name)
+      unpackedDirs += unpackDir
       unpackedFiles ++= IO.unzip(attrFile.data, unpackDir)
     }
 
@@ -85,15 +101,17 @@ object HaxeIdea {
         }
       }
     }
-    unpackedFiles.toVector
+    (unpackedDirs, unpackedFiles)
   }
+
+  lazy val copyHaxeDepsFilesTask = copyHaxeDepsFiles := copyHaxeDepsInternal.value._2.toVector
 
   /**
     * Update .iml haxe module file
     */
   lazy val haxeIdeaUpdateTask = haxeIdeaUpdate := {
     import _XmlUtils._
-    copyHaxeDeps.value
+    copyHaxeDepsFiles.value
     val log = streams.value.log
     val moduleDir: File = haxeIdeaModuleDir.value
     val imlFile: File = haxeIdeaModuleFile.value
@@ -161,10 +179,12 @@ object HaxeIdea {
 
     haxeIdeaCpTask,
     haxeManagedLibSubDirsTask,
-    copyHaxeDepsTask,
+    copyHaxeDepsFilesTask,
+    copyHaxeDepsInternalTask,
     haxeIdeaUpdateTask,
 
     haxeDependsOnIdeaModuleNames := Nil,
-    resourceGenerators in Compile += copyHaxeDeps.taskValue
+    haxeDependsOnIdeaSourceDirs := Nil,
+    resourceGenerators in Compile += copyHaxeDepsFiles.taskValue
   )
 }
