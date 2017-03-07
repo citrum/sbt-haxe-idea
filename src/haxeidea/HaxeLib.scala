@@ -25,6 +25,6 @@ object HaxeLib {
     Keys.`package` := packageHaxe.value,
     packageBin := packageHaxe.value,
 
-    packagedArtifacts := Map(artifact.value -> packageHaxe.value)
+    packagedArtifacts := Classpaths.packaged(Seq(makePom)).value ++ Map(artifact.value -> packageHaxe.value)
   )
 }
