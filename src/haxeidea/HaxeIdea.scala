@@ -185,6 +185,6 @@ object HaxeIdea {
 
     haxeDependsOnIdeaModuleNames := Nil,
     haxeDependsOnIdeaSourceDirs := Nil,
-    resourceGenerators in Compile += copyHaxeDepsFiles.taskValue
+    resourceGenerators in Compile += copyHaxeDepsFiles.map(_ => Nil).taskValue // Return empty list for one purpose: unpacked and copied haxe files should not be included in final jar
   )
 }
