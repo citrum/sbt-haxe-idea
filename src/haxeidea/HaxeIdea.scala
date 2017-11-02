@@ -81,12 +81,23 @@ object HaxeIdea {
       }
 
       unpackedDirs += unpackDir
-      unpackedFiles ++= IO.unzip(attrFile.data, unpackDir)
+      var files: Set[File] = IO.unzip(attrFile.data, unpackDir)
 
-      // Small hack: after unpack make haxe binaries executable
       if (isHaxeJar) {
+        // Small hack: after unpack make haxe binaries executable
         (unpackDir / "bin").***.filter(!_.isDirectory).get.foreach(_.setExecutable(true))
+
+        // Workaround for IDEA Scala bug https://youtrack.jetbrains.com/issue/SCL-12839
+        val sys_ = unpackDir / "sys_"
+        if (sys_.exists()) {
+          sys_.renameTo(unpackDir / "sys")
+          files = files.map {f =>
+            if (f.toString.contains("/std/sys_/")) new File(f.toString.replaceFirst("/std/sys_/", "/std/sys/"))
+            else f
+          }
+        }
       }
+      unpackedFiles ++= files
     }
 
     // Delete all other files in managedSourceDir
