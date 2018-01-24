@@ -132,13 +132,45 @@ object HaxeIdea {
     require(haxeStdSeq.nonEmpty, "No haxe standard library found. Add dependency to `haxe-jar` artifact.")
     require(haxeStdSeq.size == 1, "More than one standard library defined. Choose only one `haxe-jar` artifact.")
     val haxeStd: File = haxeStdSeq.head
-    val haxeBin: File = haxeStd / "bin/linux64/haxe"
-    require(haxeBin.exists(), "Cannot find haxe binary in " + haxeBin)
-    require(haxeBin.canExecute, "Haxe binary cannot be executable (no executable flag set?)")
+    val haxeBin: File = getHaxeBin(haxeStd)
 
     Seq("-Dhaxe.bin=" + haxeBin,
       "-Dhaxe.std=" + haxeStd,
       "-Dhaxe.cp=" + haxeCpDirs.mkString(":"))
+  }
+
+  def getHaxeBin(haxeStd: File): File = {
+    val os: String = System.getProperty("os.name")
+    if (os.startsWith("Windows")) {
+      // Windows
+      val haxeBin: File = haxeStd / (if (isArch64bit) "bin/win64/haxe" else "bin/win/haxe")
+      require(haxeBin.exists(), "Cannot find haxe binary in " + haxeBin)
+      haxeBin
+    } else if (os.startsWith("Mac")) {
+      // OSX
+      val haxeBin: File = haxeStd / "bin/osx/haxe"
+      require(haxeBin.exists(), "Cannot find haxe binary in " + haxeBin)
+      require(haxeBin.canExecute, "Haxe binary cannot be executable (no executable flag set?)")
+      haxeBin
+    } else {
+      // Linux
+      require(isArch64bit, "Haxe doesn't support 32-bit Linux. Sorry")
+      val haxeBin: File = haxeStd / "bin/linux64/haxe"
+      require(haxeBin.exists(), "Cannot find haxe binary in " + haxeBin)
+      require(haxeBin.canExecute, "Haxe binary cannot be executable (no executable flag set?)")
+      haxeBin
+    }
+  }
+
+  private def isArch64bit: Boolean = {
+    if (System.getProperty("os.name").startsWith("Windows")) {
+      val arch: String = System.getenv("PROCESSOR_ARCHITECTURE")
+      val wow64Arch: String = System.getenv("PROCESSOR_ARCHITEW6432")
+
+      arch.endsWith("64") || wow64Arch != null && wow64Arch.endsWith("64")
+    } else {
+      System.getProperty("os.arch").contains("64")
+    }
   }
 
   // ------------------------------- Default settings -------------------------------
