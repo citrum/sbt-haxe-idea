@@ -1,6 +1,6 @@
 package haxeidea
 
-import sbt.Keys._
+import sbt.Keys.{artifact, _}
 import sbt._
 
 import scala.collection.mutable.ArrayBuffer
@@ -19,6 +19,10 @@ object HaxeIdea {
   val copyHaxeDepsInternal = taskKey[(Seq[File], Set[File])]("Unpack and copy dependent haxe libraries to `haxeManagedLibSourceDir`. Internal usage. Returns (directories, all_files)")
 
   val haxeCompilerJavaParams = taskKey[Seq[String]]("Parameters for haxe compiler in application ready to be sent via command line in `javaOptions`. For example: [\"-Dhaxe.cp=...\", \"-Dhaxe.bin=...\"]")
+
+  val haxeTestRunner = taskKey[String]("Qualified Java/Scala class name for responsible for running haxe tests")
+  val haxeTest = taskKey[Unit]("Run haxe tests")
+  val haxeTestOnly = inputKey[Unit]("Run selected haxe test")
 
   // ------------------------------- RelativeHaxeProject -------------------------------
 
@@ -39,9 +43,13 @@ object HaxeIdea {
       if (useRef)
         proj
           .dependsOn(project)
-          .settings(haxeDependsOnIdeaSourceDirs ++=
-            (sourceDirectories in Compile in project).value ++
-              (unmanagedResourceDirectories in Compile in project).value)
+          .settings(
+            haxeDependsOnIdeaSourceDirs in Compile ++=
+              (sourceDirectories in Compile in project).value ++
+                (unmanagedResourceDirectories in Compile in project).value,
+            haxeDependsOnIdeaSourceDirs in Test ++=
+              (sourceDirectories in Test in project).value ++
+                (unmanagedResourceDirectories in Test in project).value)
       else proj.settings(libraryDependencies += moduleId)
   }
   implicit class _ProjectWrapper(proj: Project) {
@@ -51,21 +59,37 @@ object HaxeIdea {
   // ------------------------------- Tasks -------------------------------
 
   lazy val haxeCpTask = haxeCp := {
-    (haxeDependsOnIdeaSourceDirs.value ++
-      managedHaxeSourceSubDirs.value ++
+    ((haxeDependsOnIdeaSourceDirs in Compile).value ++
+      (managedHaxeSourceSubDirs in Compile).value ++
       (sourceDirectories in Compile).value
       ).filter(_.exists()).distinct
   }
+  lazy val haxeCpTaskTest = haxeCp in Test := {
+    ((haxeDependsOnIdeaSourceDirs in Compile).value ++ (haxeDependsOnIdeaSourceDirs in Test).value ++
+      (managedHaxeSourceSubDirs in Compile).value ++ (managedHaxeSourceSubDirs in Test).value ++
+      (sourceDirectories in Compile).value ++ (sourceDirectories in Test).value
+      ).filter(_.exists()).distinct
+  }
 
-  lazy val managedHaxeSourceSubDirsTask = managedHaxeSourceSubDirs := copyHaxeDepsInternal.value._1
+  lazy val managedHaxeSourceSubDirsTask = managedHaxeSourceSubDirs in Compile := (copyHaxeDepsInternal in Compile).value._1
+  lazy val managedHaxeSourceSubDirsTaskTest = managedHaxeSourceSubDirs in Test := (copyHaxeDepsInternal in Test).value._1
 
   /**
     * Unpack and copy dependent haxe libraries to [[managedHaxeSourceSubDirs]]
     */
-  lazy val copyHaxeDepsInternalTask = copyHaxeDepsInternal := {
-    val managedSourceDir: File = managedHaxeSourceDirectory.value
-
+  lazy val copyHaxeDepsInternalTask = copyHaxeDepsInternal in Compile := {
+    val managedSourceDir: File = (managedHaxeSourceDirectory in Compile).value
     val classPath: Classpath = (dependencyClasspath in Compile).value
+    copyHaxeDepsInternal0(managedSourceDir, classPath)
+  }
+
+  lazy val copyHaxeDepsInternalTaskTest = copyHaxeDepsInternal in Test := {
+    val managedSourceDir: File = (managedHaxeSourceDirectory in Test).value
+    val classPath: Classpath = (dependencyClasspath in Test).value
+    copyHaxeDepsInternal0(managedSourceDir, classPath)
+  }
+
+  def copyHaxeDepsInternal0(managedSourceDir: File, classPath: Classpath) = {
     var unpackedFiles: Set[File] = Set.empty
     var unpackedDirs = new ArrayBuffer[File]()
     for {attrFile <- classPath if !attrFile.data.isDirectory
@@ -124,10 +148,11 @@ object HaxeIdea {
     (unpackedDirs, unpackedFiles)
   }
 
-  lazy val copyHaxeDepsFilesTask = copyHaxeDepsFiles := copyHaxeDepsInternal.value._2.toVector
 
-  lazy val haxeCompilerJavaParamsTask = haxeCompilerJavaParams := {
-    val dirs: Seq[File] = haxeCp.value
+  lazy val copyHaxeDepsFilesTask = copyHaxeDepsFiles in Compile := (copyHaxeDepsInternal in Compile).value._2.toVector
+  lazy val copyHaxeDepsFilesTaskTest = copyHaxeDepsFiles in Test := (copyHaxeDepsInternal in Test).value._2.toVector
+
+  def haxeCompilerJavaParamsTask0(dirs: Seq[File]) = {
     val (haxeStdSeq: Seq[File], haxeCpDirs: Seq[File]) = dirs.partition(_ / "Std.hx" exists())
     require(haxeStdSeq.nonEmpty, "No haxe standard library found. Add dependency to `haxe-jar` artifact.")
     require(haxeStdSeq.size == 1, "More than one standard library defined. Choose only one `haxe-jar` artifact.")
@@ -138,6 +163,9 @@ object HaxeIdea {
       "-Dhaxe.std=" + haxeStd,
       "-Dhaxe.cp=" + haxeCpDirs.mkString(":"))
   }
+
+  lazy val haxeCompilerJavaParamsTask = haxeCompilerJavaParams in Compile := haxeCompilerJavaParamsTask0((haxeCp in Compile).value)
+  lazy val haxeCompilerJavaParamsTaskTest = haxeCompilerJavaParams in Test := haxeCompilerJavaParamsTask0((haxeCp in Test).value)
 
   def getHaxeBin(haxeStd: File): File = {
     val os: String = System.getProperty("os.name")
@@ -173,6 +201,47 @@ object HaxeIdea {
     }
   }
 
+  /**
+    * Include `useHaxeTestTask` in your project config to enable automatically run `haxeTest` on `test` task.
+    */
+  lazy val useHaxeTestTask = test in Test := {val _ = haxeTest.value; (test in Test).value}
+
+  lazy val haxeTestTask = haxeTest := {
+    // If you use your own HaxeTestRunner, add `(compile in Test).value` command prior to this task
+    val baseDir = baseDirectory.value
+    val classPath = Seq(baseDir, (classDirectory in Runtime).value) ++
+      (dependencyClasspath in Test).value.files ++
+      (resourceDirectories in Runtime).value
+    runScala0(classPath, haxeTestRunner.value, runJVMOptions = (haxeCompilerJavaParams in Test).value)
+  }
+
+  lazy val haxeTestOnlyTask = haxeTestOnly := {
+    val args: Seq[String] = complete.DefaultParsers.spaceDelimited("<arg>").parsed
+    // If you use your own HaxeTestRunner, add `(compile in Test).value` command prior to this task
+    val baseDir = baseDirectory.value
+    val classPath = Seq(baseDir, (classDirectory in Runtime).value) ++
+      (dependencyClasspath in Test).value.files ++
+      (resourceDirectories in Runtime).value
+    runScala0(classPath, haxeTestRunner.value, runJVMOptions = (haxeCompilerJavaParams in Test).value,
+      arguments = args)
+  }
+
+  /**
+    * Run codegen scala class in another process
+    */
+  private def runScala0(classPath: Seq[File], className: String,
+                        arguments: Seq[String] = Nil,
+                        runJVMOptions: Seq[String] = Nil) {
+    val ret: Int = new Fork("java", Some(className)).apply(
+      // здесь мы не используем параметр bootJars, потому что он добавляет jar'ки через -Xbootclasspath/a,
+      // а это чревато тем, что getClass.getClassLoader == null для всех классов
+      ForkOptions(
+        runJVMOptions = Seq("-cp", classPath.mkString(":")) ++ runJVMOptions,
+        outputStrategy = Some(StdoutOutput)),
+      arguments)
+    if (ret != 0) sys.error("Execution " + className + " ends with error")
+  }
+
   // ------------------------------- Default settings -------------------------------
 
   /**
@@ -180,14 +249,23 @@ object HaxeIdea {
     */
   lazy val haxeIdeaSettings = Seq[Setting[_]](
     managedHaxeSourceDirectory := target.value / "managed-haxe",
+    haxeTestRunner := "webby.mvc.script.HaxeTestRunner",
 
     haxeCpTask,
+    haxeCpTaskTest,
     managedHaxeSourceSubDirsTask,
+    managedHaxeSourceSubDirsTaskTest,
     copyHaxeDepsFilesTask,
+    copyHaxeDepsFilesTaskTest,
     copyHaxeDepsInternalTask,
+    copyHaxeDepsInternalTaskTest,
     haxeCompilerJavaParamsTask,
+    haxeCompilerJavaParamsTaskTest,
+    haxeTestTask,
+    haxeTestOnlyTask,
 
     haxeDependsOnIdeaSourceDirs := Nil,
-    resourceGenerators in Compile += copyHaxeDepsFiles.map(_ => Nil).taskValue // Return empty list for one purpose: unpacked and copied haxe files should not be included in final jar
+    resourceGenerators in Compile += (copyHaxeDepsFiles in Compile).map(_ => Nil).taskValue, // Return empty list for one purpose: unpacked and copied haxe files should not be included in final jar
+    resourceGenerators in Test += (copyHaxeDepsFiles in Test).map(_ => Nil).taskValue
   )
 }
