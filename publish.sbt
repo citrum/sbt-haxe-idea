@@ -1,6 +1,6 @@
 name := "sbt-haxe-idea"
 organization := "com.github.citrum"
-version := "0.2.2"
+version := "0.2.3"
 
 description := "An SBT plugin to help support Haxe dependencies for Intellij IDEA"
 homepage := Some(url("https://github.com/citrum/sbt-haxe-idea"))
